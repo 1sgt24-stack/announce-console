@@ -4,11 +4,11 @@
  * 비워 두면 앱은 "이 기기 전용" 모드로 동작합니다.
  */
 window.FIREBASE_CONFIG = {
-  apiKey: "여기에_입력",
-  authDomain: "",
-  databaseURL: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+ apiKey: "AIzaSyCf35KuI9ytMBhLGxmCGkxBF0zcWRnwGkE",
+  authDomain: "announce-console.firebaseapp.com",
+  databaseURL: "https://announce-console-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "announce-console",
+  storageBucket: "announce-console.firebasestorage.app",
+  messagingSenderId: "533812506646",
+  appId: "1:533812506646:web:3077b400e5f4c419318537"
 };
