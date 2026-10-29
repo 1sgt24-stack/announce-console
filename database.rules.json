@@ -1,0 +1,14 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "stations": {
+      "$code": {
+        ".read": "auth != null && $code.length >= 8",
+        ".write": "auth != null && $code.length >= 8",
+        "requests": { ".indexOn": ["createdAt"] },
+        "log": { ".indexOn": ["at"] }
+      }
+    }
+  }
+}
