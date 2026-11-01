@@ -46,7 +46,17 @@ button{cursor:pointer}
 .season{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px}
 .season button{border:0;background:transparent;padding:7px 13px;border-radius:999px;font-size:14px;color:var(--muted)}
 .season button[aria-pressed="true"]{background:var(--pool);color:var(--pool-ink);font-weight:700}
-.season button[data-s="closed"][aria-pressed="true"]{background:var(--muted);color:var(--surface)}
+.view-seg{margin-bottom:10px} .view-seg button{padding:7px 14px;font-size:14px} .view-seg small{opacity:.75;font-size:12px}
+.dchips{display:flex;flex-wrap:wrap;gap:4px}
+.dchip{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:3px 8px;font-size:12.5px;color:var(--muted)}
+.dchip[aria-pressed="true"]{background:var(--pool);color:var(--pool-ink);border-color:var(--pool);font-weight:700}
+.sched td.empty{color:var(--muted);text-align:center;padding:18px 8px}
+.hol-list{display:flex;flex-wrap:wrap;gap:6px}
+.hol{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--sunk);border-radius:999px;padding:4px 6px 4px 12px;font-size:13px}
+.hol b{font-family:var(--f-mono);font-weight:500}
+.hol button{border:0;background:transparent;color:var(--muted);padding:2px 6px;border-radius:999px}
+.hol-add{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.hol-add input{max-width:200px}
 .conn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 14px 6px 12px;font-size:13.5px;max-width:100%}
 .conn i{width:9px;height:9px;border-radius:50%;background:var(--muted);flex:none}
 .conn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -102,7 +112,7 @@ h3.sec{margin:0;font-size:13px;letter-spacing:.06em;color:var(--muted)}
 .switch:disabled{opacity:.5;cursor:not-allowed}
 .next{font-size:14px;color:var(--muted)} .next b{color:var(--ink);font-family:var(--f-mono)}
 .sched-wrap{overflow-x:auto}
-table.sched{width:100%;border-collapse:collapse;min-width:520px}
+table.sched{width:100%;border-collapse:collapse;min-width:660px}
 .sched th{text-align:left;font-size:12px;color:var(--muted);font-weight:500;padding:6px 8px;border-bottom:1px solid var(--line)}
 .sched td{padding:6px 8px;border-bottom:1px solid var(--line)}
 .sched td.tm{width:120px} .sched td.on{width:60px;text-align:center} .sched td.del{width:44px;position:relative}
@@ -196,7 +206,6 @@ input[type=range]{width:100%;accent-color:var(--pool)}
     <div class="season" role="group" aria-label="운영 시즌">
       <button type="button" data-s="gold">골드시즌</button>
       <button type="button" data-s="normal">일반 운영</button>
-      <button type="button" data-s="closed">정기휴장</button>
     </div>
     <button type="button" class="conn wait" id="connBtn" aria-label="연결 설정 열기"><i></i><span id="connTxt">연결 확인 중</span></button>
     <div class="clock" id="clock">--:--:--</div>
@@ -247,6 +256,14 @@ input[type=range]{width:100%;accent-color:var(--pool)}
         <p class="hint" id="schedHint"></p>
         <div id="schedArea"></div>
         <div class="actions"><button class="btn" id="addRow" type="button">+ 시간 추가</button></div>
+        <h3 class="sec">공휴일 (주말 시간표가 적용되는 날)</h3>
+        <p class="hint">토·일요일은 자동으로 주말 시간표가 나갑니다. 평일 공휴일과 임시공휴일은 여기에 등록된 날짜로 판단합니다.</p>
+        <div class="hol-list" id="holList"></div>
+        <div class="hol-add">
+          <input type="date" id="holD" aria-label="공휴일 날짜">
+          <input type="text" id="holN" placeholder="이름 (예: 임시공휴일)" aria-label="공휴일 이름">
+          <button class="btn" id="holAdd" type="button">+ 공휴일 추가</button>
+        </div>
       </section>
     </main>
 

@@ -43,6 +43,19 @@ const DEFAULT_SCHED = {
  normal:[['10:00','o1'],['12:00','s1'],['14:50','e1'],['15:00','e2'],['17:30','o4'],['18:00','o5']]
 };
 
+/* 주중·주말 구분과 요일 코드 (0=일 … 6=토, h=공휴일) */
+const DAY_LABEL = { '1':'월','2':'화','3':'수','4':'목','5':'금','6':'토','0':'일','h':'공휴일' };
+const DT = { wd: { name: '주중', sub: '월~금', days: '12345' }, we: { name: '주말·공휴일', sub: '토·일·공휴일', days: '60h' } };
+/* 기본 공휴일 (대체공휴일 포함). 임시공휴일은 시간표 탭 아래에서 추가하세요. */
+const DEFAULT_HOLIDAYS = [
+ ['2026-12-25','성탄절'],
+ ['2027-01-01','신정'],['2027-02-05','설날 연휴'],['2027-02-06','설날'],['2027-02-07','설날 연휴'],['2027-02-08','대체공휴일(설날)'],
+ ['2027-03-01','삼일절'],['2027-05-05','어린이날'],['2027-05-13','부처님오신날'],['2027-06-06','현충일'],
+ ['2027-08-15','광복절'],['2027-08-16','대체공휴일(광복절)'],['2027-09-14','추석 연휴'],['2027-09-15','추석'],['2027-09-16','추석 연휴'],
+ ['2027-10-03','개천절'],['2027-10-04','대체공휴일(개천절)'],['2027-10-09','한글날'],['2027-10-11','대체공휴일(한글날)'],
+ ['2027-12-25','성탄절'],['2027-12-27','대체공휴일(성탄절)']
+].map(([d, n]) => ({ d, n }));
+
 /* ================= 도우미 ================= */
 const $ = s => document.querySelector(s);
 const load = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
@@ -58,6 +71,28 @@ function defaultSched() {
   const mk = rows => rows.map(([time, id]) => ({ k: rid(), time, id, on: true }));
   return { gold: mk(DEFAULT_SCHED.gold), normal: mk(DEFAULT_SCHED.normal) };
 }
+function normRows(a, days) {
+  return clean(a).filter(r => r && r.time).map(r => ({ k: r.k || rid(), time: r.time, id: r.id || '', on: r.on !== false, days: typeof r.days === 'string' ? r.days : days }));
+}
+/* 예전 형식(시즌별 한 장)도 주중·주말 두 장으로 바꿔 줍니다 */
+function normSched(v) {
+  const out = {};
+  ['gold', 'normal'].forEach(s => {
+    const x = v && v[s];
+    if (x && !Array.isArray(x) && (x.wd || x.we)) out[s] = { wd: normRows(x.wd, DT.wd.days), we: normRows(x.we, DT.we.days) };
+    else { const rows = clean(x); out[s] = { wd: normRows(rows, DT.wd.days), we: normRows(rows.map(r => ({ ...r, k: rid() })), DT.we.days) }; }
+  });
+  return out;
+}
+const normHol = a => clean(a).filter(h => h && /^\d{4}-\d{2}-\d{2}$/.test(h.d)).map(h => ({ d: h.d, n: h.n || '공휴일' }));
+const normSeason = s => s === 'gold' ? 'gold' : 'normal';
+const ymd = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+function holidayName(d) { const h = holidays.find(x => x.d === ymd(d)); return h ? h.n : ''; }
+/* 오늘 쓸 시간표: 토·일·공휴일이면 주말, 아니면 주중 */
+function dayType(d) { const w = d.getDay(); return (w === 0 || w === 6 || holidayName(d)) ? 'we' : 'wd'; }
+function rowRunsOn(r, d) { const ds = r.days || ''; return ds.includes(String(d.getDay())) || (!!holidayName(d) && ds.includes('h')); }
+function todayRows(d) { return (((sched[season] || {})[dayType(d)]) || []).filter(r => r.on && rowRunsOn(r, d)); }
+function dayText(d) { const h = holidayName(d); return (d.getMonth() + 1) + '월 ' + d.getDate() + '일(' + '일월화수목금토'[d.getDay()] + ')' + (h ? ' ' + h : ''); }
 function guessDevice() {
   const u = navigator.userAgent;
   if (/iPad|Tablet/i.test(u) || (/Android/i.test(u) && !/Mobile/i.test(u))) return '태블릿';
@@ -74,8 +109,10 @@ let settings = Object.assign({ voice: '', rate: .95, pitch: 1, volume: 1, chime:
 let autoOn = load('pa_auto', true);
 
 let lib = load('pa_lib_v2', null) || DEFAULT_LIB.map(x => ({ ...x }));
-let sched = load('pa_sched_v2', null) || defaultSched();
-let season = load('pa_season_v2', 'gold');
+let holidays = normHol(load('pa_hol_v1', null) || DEFAULT_HOLIDAYS);
+let sched = normSched(load('pa_sched_v2', null) || defaultSched());
+let season = normSeason(load('pa_season_v2', 'gold'));
+let schedView = dayType(new Date());
 let log = load('pa_log_v2', []);
 
 let filter = 'all', tplId = 'child', tplVals = {};
@@ -116,15 +153,18 @@ async function connectCloud() {
   try {
     const snap = await root.child('lib').once('value');
     if (!snap.exists()) {
-      await root.update({ lib, sched, season });
+      await root.update({ lib, sched, season, holidays });
+    } else if (!(await root.child('holidays').once('value')).exists()) {
+      await root.child('holidays').set(holidays);
     }
   } catch (e) {
     console.error(e); toast('데이터베이스 접근이 거부되었습니다. 보안 규칙과 업장 코드(8자 이상)를 확인해 주세요.'); detach(); updateConn(); return;
   }
 
   on(root.child('lib'), 'value', s => { if (s.exists()) { lib = clean(s.val()); renderLib(); renderSched(); } });
-  on(root.child('sched'), 'value', s => { const v = s.val(); if (v) { sched = { gold: clean(v.gold), normal: clean(v.normal) }; renderSched(); } });
-  on(root.child('season'), 'value', s => { if (s.val()) { season = s.val(); renderSeason(); } });
+  on(root.child('sched'), 'value', s => { const v = s.val(); if (v) { sched = normSched(v); renderSched(); } });
+  on(root.child('season'), 'value', s => { if (s.val()) { season = normSeason(s.val()); renderSeason(); } });
+  on(root.child('holidays'), 'value', s => { holidays = normHol(s.val()); save('pa_hol_v1', holidays); renderHol(); renderSched(); });
   on(root.child('log').orderByChild('at').limitToLast(40), 'value', s => {
     const arr = []; s.forEach(c => { arr.push(c.val()); }); log = arr.reverse(); renderLog(); if (!playing) setNow(null, false);
   });
@@ -143,6 +183,7 @@ async function connectCloud() {
 /* 저장: 클라우드 연결 시 공유, 아니면 이 기기에 */
 function saveLib() { save('pa_lib_v2', lib); if (cloud()) root.child('lib').set(lib); }
 function saveSched() { save('pa_sched_v2', sched); if (cloud()) root.child('sched').set(sched); }
+function saveHol() { save('pa_hol_v1', holidays); if (cloud()) root.child('holidays').set(holidays); }
 function saveSeason() { save('pa_season_v2', season); if (cloud()) root.child('season').set(season); }
 
 function stationOnline() {
@@ -468,43 +509,84 @@ function renderSeason() {
 }
 document.querySelector('.season').addEventListener('click', e => {
   const b = e.target.closest('[data-s]'); if (!b) return;
-  season = b.dataset.s; saveSeason(); renderSeason();
-  toast(season === 'closed' ? '정기휴장: 자동 방송을 하지 않습니다.' : (season === 'gold' ? '골드시즌' : '일반 운영') + ' 시간표로 바꿨습니다.');
+  season = normSeason(b.dataset.s); saveSeason(); renderSeason();
+  toast((season === 'gold' ? '골드시즌' : '일반 운영') + ' 시간표로 바꿨습니다. 주중·주말은 날짜를 보고 자동으로 적용됩니다.');
 });
+const seasonName = () => season === 'gold' ? '골드시즌' : '일반 운영';
+function curRows() {
+  const s = sched[season] || (sched[season] = { wd: [], we: [] });
+  return s[schedView] || (s[schedView] = []);
+}
 function renderSched() {
   const area = $('#schedArea');
-  $('#addRow').hidden = season === 'closed';
-  if (season === 'closed') {
-    area.innerHTML = '<div class="note">정기휴장일입니다. 자동 방송이 나가지 않습니다. 점검 중 필요한 안내는 즉시 방송이나 직접 입력으로 해 주세요.</div>';
-    $('#schedHint').textContent = ''; updNext(); return;
-  }
-  $('#schedHint').textContent = (season === 'gold' ? '골드시즌' : '일반 운영') + ' 시간표입니다. 바꾸면 바로 저장되고 모든 기기에 반영됩니다.';
-  const rows = (sched[season] || []).slice().sort((a, b) => a.time.localeCompare(b.time));
-  const now = hm(new Date()); const nextK = (rows.find(r => r.on && r.time > now) || {}).k;
+  const today = new Date(), tType = dayType(today);
+  $('#schedHint').innerHTML = `오늘은 <b>${esc(dayText(today))}</b> → <b>${seasonName()} · ${DT[tType].name}</b> 시간표가 자동으로 적용됩니다. 바꾸면 바로 저장되고 모든 기기에 반영됩니다.`;
+  const rows = curRows().slice().sort((a, b) => a.time.localeCompare(b.time));
+  const isToday = schedView === tType;
+  const now = hm(today);
+  const nextK = isToday ? (rows.find(r => r.on && rowRunsOn(r, today) && r.time > now) || {}).k : null;
   const opts = id => lib.map(x => `<option value="${esc(x.id)}"${x.id === id ? ' selected' : ''}>[${CATS[x.cat] || ''}] ${esc(x.title)}</option>`).join('') + (lib.some(x => x.id === id) ? '' : '<option value="" selected>삭제된 멘트</option>');
-  area.innerHTML = `<div class="sched-wrap"><table class="sched"><thead><tr><th>시간</th><th>방송 멘트</th><th style="text-align:center">사용</th><th></th></tr></thead><tbody>${
-    rows.map(r => `<tr data-k="${esc(r.k)}" class="${r.k === nextK ? 'upcoming' : (r.time <= now ? 'done' : '')}">
+  const chips = r => DT[schedView].days.split('').map(c => `<button type="button" class="dchip" data-day="${c}" aria-pressed="${(r.days || '').includes(c)}">${DAY_LABEL[c]}</button>`).join('');
+  const cls = r => !isToday ? '' : (r.k === nextK ? 'upcoming' : ((r.time <= now || !rowRunsOn(r, today)) ? 'done' : ''));
+  const seg = Object.keys(DT).map(k => `<button type="button" data-view="${k}" aria-pressed="${k === schedView}">${DT[k].name} <small>${DT[k].sub}</small>${k === tType ? ' · 오늘' : ''}</button>`).join('');
+  area.innerHTML = `<div class="seg view-seg" role="group" aria-label="주중·주말 시간표">${seg}</div>
+  <div class="sched-wrap"><table class="sched"><thead><tr><th>시간</th><th>방송 멘트</th><th>방송 요일</th><th style="text-align:center">사용</th><th></th></tr></thead><tbody>${
+    rows.length ? rows.map(r => `<tr data-k="${esc(r.k)}" class="${cls(r)}">
       <td class="tm"><input type="time" id="st-${esc(r.k)}" data-fld="time" value="${esc(r.time)}" aria-label="방송 시간"></td>
       <td><select id="ss-${esc(r.k)}" data-fld="id" aria-label="방송 멘트">${opts(r.id)}</select></td>
+      <td class="days"><div class="dchips" role="group" aria-label="방송 요일">${chips(r)}</div></td>
       <td class="on"><input type="checkbox" id="sc-${esc(r.k)}" data-fld="on" ${r.on ? 'checked' : ''} aria-label="사용"></td>
       <td class="del"><button type="button" class="edit" style="position:static" data-del="${esc(r.k)}" aria-label="삭제">✕</button></td></tr>`).join('')
+    : `<tr><td colspan="5" class="empty">${DT[schedView].name} 시간표가 비어 있습니다. 아래 "+ 시간 추가"로 만들어 주세요.</td></tr>`
   }</tbody></table></div>`;
   updNext();
 }
 $('#schedArea').addEventListener('change', e => {
   const tr = e.target.closest('tr[data-k]'); if (!tr) return;
-  const r = sched[season].find(x => x.k === tr.dataset.k); if (!r) return;
-  const f = e.target.dataset.fld; r[f] = f === 'on' ? e.target.checked : e.target.value;
+  const r = curRows().find(x => x.k === tr.dataset.k); if (!r) return;
+  const f = e.target.dataset.fld; if (!f) return;
+  r[f] = f === 'on' ? e.target.checked : e.target.value;
   saveSched(); renderSched();
 });
 $('#schedArea').addEventListener('click', e => {
+  const v = e.target.closest('[data-view]');
+  if (v) { schedView = v.dataset.view; renderSched(); return; }
+  const dc = e.target.closest('[data-day]');
+  if (dc) {
+    const r = curRows().find(x => x.k === dc.closest('tr[data-k]').dataset.k); if (!r) return;
+    const c = dc.dataset.day, has = (r.days || '').includes(c);
+    r.days = DT[schedView].days.split('').filter(x => x === c ? !has : (r.days || '').includes(x)).join('');
+    saveSched(); renderSched();
+    if (!r.days) toast('방송 요일이 모두 꺼져 이 줄은 방송되지 않습니다.');
+    return;
+  }
   const b = e.target.closest('[data-del]'); if (!b) return;
-  sched[season] = sched[season].filter(x => x.k !== b.dataset.del); saveSched(); renderSched();
+  sched[season][schedView] = curRows().filter(x => x.k !== b.dataset.del); saveSched(); renderSched();
 });
 $('#addRow').onclick = () => {
   const d = new Date(Date.now() + 10 * 60000);
-  (sched[season] = sched[season] || []).push({ k: rid(), time: hm(d), id: lib[0] ? lib[0].id : '', on: true });
+  curRows().push({ k: rid(), time: hm(d), id: lib[0] ? lib[0].id : '', on: true, days: DT[schedView].days });
   saveSched(); renderSched();
+};
+
+/* 공휴일 관리 */
+function renderHol() {
+  const t = ymd(new Date());
+  const list = holidays.slice().filter(h => h.d >= t).sort((a, b) => a.d.localeCompare(b.d));
+  $('#holList').innerHTML = list.length ? list.map(h => {
+    const d = new Date(h.d + 'T00:00:00');
+    return `<span class="hol"><b>${d.getFullYear() % 100}.${pad(d.getMonth() + 1)}.${pad(d.getDate())}(${'일월화수목금토'[d.getDay()]})</b> ${esc(h.n)}<button type="button" data-hdel="${esc(h.d)}" aria-label="${esc(h.n)} 삭제">✕</button></span>`;
+  }).join('') : '<span class="hint">등록된 공휴일이 없습니다.</span>';
+}
+$('#holList').addEventListener('click', e => {
+  const b = e.target.closest('[data-hdel]'); if (!b) return;
+  holidays = holidays.filter(h => h.d !== b.dataset.hdel); saveHol(); renderHol(); renderSched();
+});
+$('#holAdd').onclick = () => {
+  const d = $('#holD').value, n = $('#holN').value.trim() || '임시공휴일';
+  if (!d) { toast('날짜를 먼저 골라 주세요.'); return; }
+  holidays = holidays.filter(h => h.d !== d).concat({ d, n }); saveHol(); renderHol(); renderSched();
+  $('#holD').value = ''; $('#holN').value = ''; toast(d + ' ' + n + '을(를) 공휴일로 추가했습니다.');
 };
 $('#autoSw').onclick = () => {
   autoOn = !autoOn; save('pa_auto', autoOn); renderRole();
@@ -531,11 +613,11 @@ function renderRole() {
 }
 function updNext() {
   const el = $('#nextInfo');
-  if (season === 'closed') { el.textContent = '휴장일: 자동 방송 없음'; return; }
-  const now = hm(new Date());
-  const r = (sched[season] || []).filter(x => x.on && x.time > now).sort((a, b) => a.time.localeCompare(b.time))[0];
+  const d = new Date(), now = hm(d);
+  const r = todayRows(d).filter(x => x.time > now).sort((a, b) => a.time.localeCompare(b.time))[0];
   const it = r && lib.find(x => x.id === r.id);
-  el.innerHTML = it ? `다음 방송 <b>${esc(r.time)}</b> ${esc(it.title)}` : '오늘 남은 자동 방송이 없습니다';
+  const tag = `${seasonName()} · ${DT[dayType(d)].name}`;
+  el.innerHTML = it ? `${tag} · 다음 방송 <b>${esc(r.time)}</b> ${esc(it.title)}` : `${tag} · 오늘 남은 자동 방송이 없습니다`;
 }
 
 /* ================= 시계·자동 방송 ================= */
@@ -545,11 +627,14 @@ setInterval(() => {
   const d = new Date();
   $('#clock').textContent = hm(d) + ':' + pad(d.getSeconds());
   const m = hm(d);
-  if (m !== lastMin) { lastMin = m; if (!$('#p-sched').hidden) renderSched(); else updNext(); updateConn(); updateStopBtn(); }
-  if (!autoOn || season === 'closed' || !runsSchedule()) return;
+  if (m !== lastMin) {
+    if (m === '00:00') { schedView = dayType(d); renderHol(); }
+    lastMin = m; if (!$('#p-sched').hidden) renderSched(); else updNext(); updateConn(); updateStopBtn();
+  }
+  if (!autoOn || !runsSchedule()) return;
   const day = d.toDateString();
-  (sched[season] || []).forEach(r => {
-    if (r.on && r.time === m) {
+  todayRows(d).forEach(r => {
+    if (r.time === m) {
       const key = day + r.time + r.k;
       if (!fired.has(key)) { fired.add(key); const it = lib.find(x => x.id === r.id); if (it) enqueue({ item: it, source: '자동', from: devName }); }
     }
@@ -636,7 +721,7 @@ $('#sSave').onclick = async () => {
 $('#freeTitle').value = '유수풀 정기 점검 안내';
 $('#freeKo').value = '고객 여러분께 안내 말씀 드립니다. 잠시 후 오후 3시부터 유수풀 정기 점검이 10분간 진행됩니다. 이용에 참고해 주시기 바랍니다.';
 $('#freeEn').value = 'Attention please. The lazy river will be closed for a 10-minute inspection starting at 3 p.m.';
-renderFilters(); renderLib(); renderTpl(); renderSeason(); renderRepeat(); renderLog(); setNow(null, false); renderRole();
+renderFilters(); renderLib(); renderTpl(); renderHol(); renderSeason(); renderRepeat(); renderLog(); setNow(null, false); renderRole();
 // 휴대폰(리모컨)에서는 자주 쓰는 호출·미아 템플릿 탭을 먼저 보여 주기
 try { if (window.matchMedia('(max-width: 640px)').matches && !isStation) selectTab($('#t-tpl')); } catch (e) {}
 if (!cloudReady && isStation) { /* 이 기기 전용 모드에서는 스테이션 개념 없음 */ }
