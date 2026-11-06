@@ -66,6 +66,17 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const rid = () => Math.random().toString(36).slice(2, 10);
 const clean = a => (Array.isArray(a) ? a : Object.values(a || {})).filter(Boolean);
+/* 창을 내리거나 가려도 멈추지 않는 1초 타이머 (브라우저 절전 회피용 워커) */
+const tickers = [];
+function onTick(fn) { tickers.push(fn); }
+(function startTicker() {
+  const run = () => tickers.forEach(f => { try { f(); } catch (e) { console.error(e); } });
+  try {
+    const src = 'setInterval(function(){postMessage(0)},1000);';
+    const w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+    w.onmessage = run;
+  } catch (e) { setInterval(run, 1000); }
+})();
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 3200); }
 function defaultSched() {
   const mk = rows => rows.map(([time, id]) => ({ k: rid(), time, id, on: true }));
@@ -344,7 +355,8 @@ function requestStop() {
 }
 
 /* ================= 스테이션 동작 ================= */
-let stationStarted = false, beatTimer = null, wakeLock = null, stationRefs = [];
+let stationStarted = false, lastBeat = 0, wakeLock = null, stationRefs = [], stationLock = null;
+onTick(() => { if (stationStarted && Date.now() - lastBeat >= 15000) { lastBeat = Date.now(); beat(); } });
 function beat() {
   if (!cloud() || !isStation || !stationStarted) return;
   root.child('station').update({ dev: devId, name: devName, hb: TS(), now: playing ? ($('#nowTitle').textContent || '') : '' });
@@ -352,15 +364,17 @@ function beat() {
 async function keepAwake() {
   try { if ('wakeLock' in navigator) { wakeLock = await navigator.wakeLock.request('screen'); } } catch (e) {}
 }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && stationStarted) keepAwake(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && stationStarted) { keepAwake(); beat(); lastBeat = Date.now(); } });
 
 function startStation() {
   unlockAudio(); keepAwake();
+  /* 잠금을 쥐고 있으면 브라우저가 이 탭을 얼리지 않도록 돕습니다 */
+  try { if (navigator.locks && !stationLock) navigator.locks.request('pa-station', () => new Promise(r => { stationLock = r; })); } catch (e) {}
   stationStarted = true; $('#unlock').hidden = true;
   if (cloud()) {
     root.child('station').set({ dev: devId, name: devName, hb: TS(), now: '' });
     root.child('station/hb').onDisconnect().set(0);
-    clearInterval(beatTimer); beatTimer = setInterval(beat, 15000);
+    lastBeat = Date.now();
     const startedAt = serverNow();
     // 새 방송 요청 받기 (2분 넘은 요청은 무시)
     const reqRef = root.child('requests').orderByChild('createdAt').startAt(startedAt - 120000);
@@ -382,7 +396,8 @@ function startStation() {
   updateConn(); renderRole(); toast('방송 스테이션을 시작했습니다. 이 화면을 켜 둔 채로 두세요.');
 }
 function stopStation() {
-  stationStarted = false; clearInterval(beatTimer);
+  stationStarted = false;
+  if (stationLock) { stationLock(); stationLock = null; }
   stationRefs.forEach(([r, e, f]) => r.off(e, f)); stationRefs = [];
   try { wakeLock && wakeLock.release(); } catch (e) {}
   stopEverything(); updateConn(); renderRole();
@@ -621,9 +636,9 @@ function updNext() {
 }
 
 /* ================= 시계·자동 방송 ================= */
-let lastMin = '';
+let lastMin = '', lastCheck = '';
 const fired = new Set();
-setInterval(() => {
+onTick(() => {
   const d = new Date();
   $('#clock').textContent = hm(d) + ':' + pad(d.getSeconds());
   const m = hm(d);
@@ -631,16 +646,20 @@ setInterval(() => {
     if (m === '00:00') { schedView = dayType(d); renderHol(); }
     lastMin = m; if (!$('#p-sched').hidden) renderSched(); else updNext(); updateConn(); updateStopBtn();
   }
+  const prev = lastCheck; lastCheck = m;
   if (!autoOn || !runsSchedule()) return;
   const day = d.toDateString();
+  /* 잠깐 멈췄던 사이(최대 3분)에 지나간 방송도 놓치지 않고 내보냅니다 */
+  const from = prev && prev < m && prev >= hm(new Date(d.getTime() - 180000)) ? prev : '';
   todayRows(d).forEach(r => {
-    if (r.time === m) {
+    if (r.time === m || (from && r.time > from && r.time < m)) {
       const key = day + r.time + r.k;
       if (!fired.has(key)) { fired.add(key); const it = lib.find(x => x.id === r.id); if (it) enqueue({ item: it, source: '자동', from: devName }); }
     }
   });
-}, 1000);
-setInterval(() => { updateConn(); updateStopBtn(); }, 5000);
+});
+let lastConn = 0;
+onTick(() => { if (Date.now() - lastConn >= 5000) { lastConn = Date.now(); updateConn(); updateStopBtn(); } });
 
 /* ================= 탭 ================= */
 function selectTab(b) {

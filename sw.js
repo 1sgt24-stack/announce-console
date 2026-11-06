@@ -1,5 +1,5 @@
 /* 앱 설치(홈 화면 추가)와 빠른 실행을 위한 서비스 워커. 항상 최신 파일을 먼저 받아 옵니다. */
-const CACHE = 'pa-v3';
+const CACHE = 'pa-v4';
 const ASSETS = ['./', './index.html', './app.js', './firebase-config.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS))); self.skipWaiting(); });
 self.addEventListener('activate', e => {
