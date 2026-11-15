@@ -26,17 +26,18 @@ const DEFAULT_LIB = [
  {id:'x2',cat:'emergency',title:'시설 점검 일시 중단',ko:'안내 말씀 드립니다. 안전 점검을 위해 해당 시설 운영을 잠시 중단합니다. 안전요원의 안내에 따라 물 밖으로 나와 주시기 바랍니다.',en:'Attention please. This facility is temporarily closed for a safety check. Please follow the lifeguard’s instructions.'},
  {id:'x3',cat:'emergency',title:'비상 대피 안내',ko:'긴급 안내 말씀 드립니다. 지금 비상 상황이 발생하였습니다. 고객 여러분께서는 침착하게 직원의 안내에 따라 가까운 비상구로 대피해 주시기 바랍니다. 뛰지 마시고 천천히 이동해 주십시오.',en:'Emergency. Please stay calm and follow staff to the nearest exit. Do not run.'}
 ];
+/* 호출·미아 템플릿: 문구 안의 {입력칸 이름}이 입력한 값으로 바뀝니다. 문구는 화면에서 고칠 수 있습니다. */
 const TEMPLATES = [
- {id:'child',title:'미아 보호',fields:[['age','나이','5'],['sex','성별','남자'],['place','보호 위치','B2 워터파크 입구 안내데스크']],
-  build:v=>`미아 보호 안내 말씀 드립니다. ${v.age}세 ${v.sex} 어린이를 ${v.place}에서 보호하고 있습니다. 보호자께서는 ${v.place}로 와 주시기 바랍니다.`},
- {id:'parent',title:'보호자 찾기',fields:[['name','어린이 이름','김민준'],['age','나이','6'],['place','보호 위치','유수풀 안전요원 초소']],
-  build:v=>`보호자를 찾습니다. ${v.age}세 ${v.name} 어린이가 보호자를 찾고 있습니다. ${v.name} 어린이의 보호자께서는 ${v.place}로 와 주시기 바랍니다.`},
+ {id:'child',title:'미아 보호',fields:[['age','나이','5'],['sex','성별','남자'],['place','보호 위치','자켓 대여소']],
+  text:'미아 보호 안내 말씀 드립니다. {나이}살 {성별} 어린이를 {보호 위치}에서 보호하고 있습니다. 보호자께서는 {보호 위치}로 와 주시기 바랍니다.'},
+ {id:'parent',title:'보호자 찾기',fields:[['name','어린이 이름','김민준'],['age','나이','6'],['place','보호 위치','자켓 대여소']],
+  text:'보호자를 찾습니다. {나이}살 {어린이 이름} 어린이가 보호자를 찾고 있습니다. {어린이 이름} 어린이의 보호자께서는 {보호 위치}로 와 주시기 바랍니다.'},
  {id:'lost',title:'분실물 습득',fields:[['item','물품','검은색 방수 스마트폰 파우치'],['found','습득 장소','파도풀 앞 선베드'],['keep','보관 장소','고객센터']],
-  build:v=>`분실물 안내 말씀 드립니다. ${v.found}에서 ${v.item}을 습득하여 ${v.keep}에 보관하고 있습니다. 물건을 잃어버리신 고객께서는 ${v.keep}로 문의해 주시기 바랍니다.`},
+  text:'분실물 안내 말씀 드립니다. {습득 장소}에서 {물품}을 습득하여 {보관 장소}에 보관하고 있습니다. 물건을 잃어버리신 고객께서는 {보관 장소}로 문의해 주시기 바랍니다.'},
  {id:'car',title:'차량 이동 요청',fields:[['num','차량 번호','12가 3456'],['model','차종','흰색 승합차']],
-  build:v=>`차량 이동 안내 말씀 드립니다. 차량 번호 ${v.num}, ${v.model} 차주분께서는 차량 이동을 위해 지하 주차장 안내 데스크로 와 주시기 바랍니다.`},
+  text:'차량 이동 안내 말씀 드립니다. 차량 번호 {차량 번호}, {차종} 차주분께서는 차량 이동을 위해 지하 주차장 안내 데스크로 와 주시기 바랍니다.'},
  {id:'call',title:'고객 호출',fields:[['name','성함','홍길동'],['place','오실 곳','1층 매표소']],
-  build:v=>`고객 호출 안내 말씀 드립니다. ${v.name} 고객님, ${v.name} 고객님께서는 ${v.place}로 와 주시기 바랍니다.`}
+  text:'고객 호출 안내 말씀 드립니다. {성함} 고객님, {성함} 고객님께서는 {오실 곳}로 와 주시기 바랍니다.'}
 ];
 const DEFAULT_SCHED = {
  gold:[['10:00','o1'],['11:00','s1'],['12:30','s4'],['13:50','e1'],['14:00','e2'],['15:00','s2'],['15:55','e3'],['16:00','e4'],['17:30','o4'],['18:00','o5']],
@@ -127,6 +128,7 @@ let schedView = dayType(new Date());
 let log = load('pa_log_v2', []);
 
 let filter = 'all', tplId = 'child', tplVals = {};
+let tplText = load('pa_tpl_v1', {}) || {};
 
 /* 코드가 링크로 들어온 경우 (?code=WP-XXXX) */
 try {
@@ -164,7 +166,7 @@ async function connectCloud() {
   try {
     const snap = await root.child('lib').once('value');
     if (!snap.exists()) {
-      await root.update({ lib, sched, season, holidays });
+      await root.update({ lib, sched, season, holidays, tpl: tplText });
     } else if (!(await root.child('holidays').once('value')).exists()) {
       await root.child('holidays').set(holidays);
     }
@@ -175,6 +177,7 @@ async function connectCloud() {
   on(root.child('lib'), 'value', s => { if (s.exists()) { lib = clean(s.val()); renderLib(); renderSched(); } });
   on(root.child('sched'), 'value', s => { const v = s.val(); if (v) { sched = normSched(v); renderSched(); } });
   on(root.child('season'), 'value', s => { if (s.val()) { season = normSeason(s.val()); renderSeason(); } });
+  on(root.child('tpl'), 'value', s => { tplText = s.val() || {}; save('pa_tpl_v1', tplText); renderTpl(); });
   on(root.child('holidays'), 'value', s => { holidays = normHol(s.val()); save('pa_hol_v1', holidays); renderHol(); renderSched(); });
   on(root.child('log').orderByChild('at').limitToLast(40), 'value', s => {
     const arr = []; s.forEach(c => { arr.push(c.val()); }); log = arr.reverse(); renderLog(); if (!playing) setNow(null, false);
@@ -194,6 +197,7 @@ async function connectCloud() {
 /* 저장: 클라우드 연결 시 공유, 아니면 이 기기에 */
 function saveLib() { save('pa_lib_v2', lib); if (cloud()) root.child('lib').set(lib); }
 function saveSched() { save('pa_sched_v2', sched); if (cloud()) root.child('sched').set(sched); }
+function saveTpl() { save('pa_tpl_v1', tplText); if (cloud()) root.child('tpl').set(tplText); }
 function saveHol() { save('pa_hol_v1', holidays); if (cloud()) root.child('holidays').set(holidays); }
 function saveSeason() { save('pa_season_v2', season); if (cloud()) root.child('season').set(season); }
 
@@ -494,17 +498,53 @@ $('#mDel').onclick = () => {
 };
 
 /* ================= 템플릿 ================= */
+const tplOf = id => TEMPLATES.find(x => x.id === id);
+const tplSrc = t => (typeof tplText[t.id] === 'string' && tplText[t.id].trim()) ? tplText[t.id] : t.text;
+/* 나이 칸에 "8세", "8살"로 적어도 숫자만 남겨 "여덟 살"로 읽히게 합니다 */
+const tplVal = (k, v) => { v = String(v == null ? '' : v).trim(); return k === 'age' ? v.replace(/\s*(세|살)$/, '') : v; };
+function buildTpl(t, vals, src) {
+  let s = src == null ? tplSrc(t) : src;
+  t.fields.forEach(([k, l]) => { s = s.split('{' + l + '}').join(tplVal(k, vals[k])); });
+  return s;
+}
 function renderTpl() {
   $('#tplPick').innerHTML = TEMPLATES.map(t => `<button type="button" class="chip" data-t="${t.id}" aria-pressed="${t.id === tplId}">${t.title}</button>`).join('');
-  const t = TEMPLATES.find(x => x.id === tplId);
+  const t = tplOf(tplId);
   if (!tplVals[tplId]) tplVals[tplId] = Object.fromEntries(t.fields.map(f => [f[0], f[2]]));
   $('#tplFields').innerHTML = t.fields.map(([k, l]) => `<label class="f" for="tf-${k}">${l}<input type="text" id="tf-${k}" data-k="${k}" value="${esc(tplVals[tplId][k])}"></label>`).join('');
+  $('#tplEditBtn').textContent = '✎ ' + t.title + ' 문구 수정';
   updTpl();
 }
-function updTpl() { const t = TEMPLATES.find(x => x.id === tplId); $('#tplPreview').textContent = t.build(tplVals[tplId]); }
+function updTpl() { $('#tplPreview').textContent = buildTpl(tplOf(tplId), tplVals[tplId]); }
 $('#tplPick').addEventListener('click', e => { const b = e.target.closest('[data-t]'); if (b) { tplId = b.dataset.t; renderTpl(); } });
 $('#tplFields').addEventListener('input', e => { const k = e.target.dataset.k; if (k) { tplVals[tplId][k] = e.target.value; updTpl(); } });
-$('#tplGo').onclick = () => { const t = TEMPLATES.find(x => x.id === tplId); requestBroadcast({ title: t.title, ko: t.build(tplVals[tplId]), en: '', cat: 'ops' }, '템플릿'); };
+
+/* 템플릿 문구 수정 창 */
+function openTplModal() {
+  const t = tplOf(tplId);
+  $('#tTitle').textContent = t.title + ' 문구 수정';
+  $('#tVars').innerHTML = t.fields.map(([, l]) => `<button type="button" class="chip" data-ins="${esc(l)}">{${esc(l)}}</button>`).join('');
+  $('#tText').value = tplSrc(t);
+  $('#tplModal').hidden = false; $('#tText').focus();
+}
+const closeTplModal = () => { $('#tplModal').hidden = true; };
+$('#tplEditBtn').onclick = openTplModal;
+$('#tCancel').onclick = closeTplModal;
+$('#tplModal').addEventListener('click', e => { if (e.target.id === 'tplModal') closeTplModal(); });
+$('#tVars').addEventListener('click', e => {
+  const b = e.target.closest('[data-ins]'); if (!b) return;
+  const ta = $('#tText'), ins = '{' + b.dataset.ins + '}', a = ta.selectionStart, z = ta.selectionEnd;
+  ta.value = ta.value.slice(0, a) + ins + ta.value.slice(z); ta.focus(); ta.selectionStart = ta.selectionEnd = a + ins.length;
+});
+$('#tReset').onclick = () => { $('#tText').value = tplOf(tplId).text; toast('기본 문구를 불러왔습니다. 저장을 누르면 적용됩니다.'); };
+$('#tPlay').onclick = () => { const t = tplOf(tplId); unlockAudio(); play({ title: t.title, ko: buildTpl(t, tplVals[tplId], $('#tText').value), en: '' }, '미리듣기'); };
+$('#tSave').onclick = () => {
+  const t = tplOf(tplId), v = $('#tText').value.trim();
+  if (!v) { toast('문구를 입력해 주세요.'); return; }
+  if (v === t.text) delete tplText[t.id]; else tplText[t.id] = v;
+  saveTpl(); renderTpl(); closeTplModal(); toast(t.title + ' 문구를 저장했습니다. 모든 기기에 반영됩니다.');
+};
+$('#tplGo').onclick = () => { const t = tplOf(tplId); requestBroadcast({ title: t.title, ko: buildTpl(t, tplVals[tplId]), en: '', cat: 'ops' }, '템플릿'); };
 
 /* ================= 직접 입력 ================= */
 $('#freeGo').onclick = () => {

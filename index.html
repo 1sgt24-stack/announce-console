@@ -231,6 +231,7 @@ input[type=range]{width:100%;accent-color:var(--pool)}
         <div class="row" id="tplFields"></div>
         <h3 class="sec">방송 문안 미리보기</h3>
         <div class="preview" id="tplPreview"></div>
+        <button class="btn ghost" id="tplEditBtn" type="button" style="align-self:flex-start">✎ 문구 수정</button>
         <div class="actions"><button class="btn primary big" id="tplGo" type="button">▶ 방송하기</button></div>
       </section>
 
@@ -316,6 +317,24 @@ input[type=range]{width:100%;accent-color:var(--pool)}
         <button class="btn" id="mCancel" type="button">취소</button>
         <button class="btn" id="mPlay" type="button">이 기기에서 듣기</button>
         <button class="btn primary" id="mSave" type="button">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 템플릿 문구 수정 -->
+<div class="modal" id="tplModal" hidden>
+  <div class="box" role="dialog" aria-modal="true" aria-labelledby="tTitle">
+    <h2 id="tTitle">문구 수정</h2>
+    <p class="hint">중괄호 { } 안의 이름은 방송할 때 입력한 값으로 바뀝니다. 아래 버튼을 누르면 커서 위치에 넣어 줍니다.</p>
+    <div class="chips" id="tVars" role="group" aria-label="입력칸 넣기"></div>
+    <label class="f" for="tText">방송 문구<textarea id="tText" style="min-height:130px"></textarea></label>
+    <div class="actions" style="justify-content:space-between">
+      <button class="btn ghost" id="tReset" type="button">기본 문구로 되돌리기</button>
+      <div class="actions">
+        <button class="btn" id="tCancel" type="button">취소</button>
+        <button class="btn" id="tPlay" type="button">이 기기에서 듣기</button>
+        <button class="btn primary" id="tSave" type="button">저장</button>
       </div>
     </div>
   </div>
